@@ -1,12 +1,16 @@
 # Network
 import socket
 import select
+import ssl
 #from struct import pack, unpack
 # System
 from signal import signal, SIGINT, SIGTERM
 from threading import Thread, activeCount
 from time import sleep
 from sys import exit, exc_info
+
+# Get a self-signed certificate
+# openssl req -new -x509 -days 365 -nodes -out cert.pem -keyout cert.pem
 
 #
 # Configuration
@@ -16,6 +20,8 @@ BUFSIZE         = 2048
 TIMEOUT_SOCKET  = 5
 LOCAL_ADDR      = '0.0.0.0'
 LOCAL_PORT      = 4443
+CERTFILE        = 'cert.pem'
+KEYFILE         = 'cert.pem'
 EXIT            = False
 
 #
@@ -24,6 +30,15 @@ EXIT            = False
 def Error():
    exc_type, _, exc_tb = exc_info()
    print exc_type, exc_tb.tb_lineno
+
+#
+# Close Socket
+#
+def Close(sock):
+   try:
+      sock.close()
+   except:
+      None
 
 #
 # Proxy Loop
@@ -114,6 +129,10 @@ def Connection(wrapper):
    else:
       wrapper.send('1')
    Proxy_Loop(wrapper, socket_dst)
+   if wrapper != 0:
+      Close(wrapper)
+   if socket_dst != 0:
+      Close(socket_dst)
 
 #
 # Exit
@@ -140,8 +159,16 @@ if __name__ == '__main__':
          # Accept
          try:
             wrapper, addr = new_socket.accept()
+            wrapper = ssl.wrap_socket(
+                        wrapper,
+                        server_side = True,
+                        certfile = CERTFILE,
+                        keyfile = KEYFILE,
+                        ssl_version = ssl.PROTOCOL_TLSv1
+                    )
             wrapper.setblocking(1)
          except:
+            Error()
             continue
          # Thread incoming connection
          recv_thread = Thread(target=Connection, args=(wrapper, ))
@@ -149,6 +176,5 @@ if __name__ == '__main__':
       else:
          sleep(3)
       # end while
-   wrapper.close()
    new_socket.close()
 

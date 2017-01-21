@@ -7,6 +7,7 @@
 # Network
 import socket
 import select
+import ssl
 from struct import pack, unpack
 # System
 from signal import signal, SIGINT, SIGTERM
@@ -23,7 +24,8 @@ TIMEOUT_SOCKET  = 5
 LOCAL_ADDR      = '0.0.0.0'
 LOCAL_PORT      = 5555
 REMOTE_ADDR     = '127.0.0.1'
-REMOTE_PORT      = 4443
+REMOTE_PORT     = 4443
+CERTFILE        = 'cert.pem'
 EXIT            = False
 
 #
@@ -52,6 +54,15 @@ ATYP_DOMAINNAME = '\x03'
 def Error():
    exc_type, _, exc_tb = exc_info()
    print exc_type, exc_tb.tb_lineno
+
+#
+# Close Socket
+#
+def Close(sock):
+   try:
+      sock.close()
+   except:
+      None
 
 #
 # Proxy Loop
@@ -84,6 +95,12 @@ def Proxy_Loop(socket_src, socket_dst):
 def Connect_To_Dst(dst_addr, dst_port):
    try:
       s = Create_Socket()
+      s = ssl.wrap_socket(
+                s,
+                cert_reqs = ssl.CERT_REQUIRED,
+                ssl_version = ssl.PROTOCOL_TLSv1,
+                ca_certs = CERTFILE
+            )
       s.connect((REMOTE_ADDR, REMOTE_PORT))
       s.send('%s:%d'%(dst_addr,dst_port))
       code = s.recv(BUFSIZE)
@@ -126,8 +143,6 @@ def Request_Client(wrapper):
       print 'DST:', dst_addr, dst_port
       return (dst_addr, dst_port)
    except:
-      if wrapper != 0:
-         wrapper.close()
       Error()
       return False
 
@@ -158,12 +173,12 @@ def Request(wrapper):
       if REP == '\x00':
          Proxy_Loop(wrapper, socket_dst)
       if wrapper != 0:
-         wrapper.close()
+         Close(wrapper)
       if socket_dst != 0:
-         socket_dst.close()
+         Close(socket_dst)
    except:
       if wrapper != 0:
-         wrapper.close()
+         Close(wrapper)
       Error()
       return False
 
@@ -281,5 +296,4 @@ if __name__ == '__main__':
       else:
          sleep(3)
       # end while
-   wrapper.close()
    new_socket.close()
