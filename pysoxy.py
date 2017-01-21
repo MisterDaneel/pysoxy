@@ -22,6 +22,8 @@ BUFSIZE         = 2048
 TIMEOUT_SOCKET  = 5
 LOCAL_ADDR      = '0.0.0.0'
 LOCAL_PORT      = 5555
+REMOTE_ADDR     = '127.0.0.1'
+REMOTE_PORT      = 4443
 EXIT            = False
 
 #
@@ -48,7 +50,6 @@ ATYP_DOMAINNAME = '\x03'
 # Error
 #
 def Error():
-   import sys
    exc_type, _, exc_tb = exc_info()
    print exc_type, exc_tb.tb_lineno
 
@@ -83,8 +84,12 @@ def Proxy_Loop(socket_src, socket_dst):
 def Connect_To_Dst(dst_addr, dst_port):
    try:
       s = Create_Socket()
-      s.connect((dst_addr,dst_port))
-      return s
+      s.connect((REMOTE_ADDR, REMOTE_PORT))
+      s.send('%s:%d'%(dst_addr,dst_port))
+      code = s.recv(BUFSIZE)
+      if code =='1':
+         return s
+      return 0
    except socket.error, e:
       print 'Failed to connect to DST - Code: ' + str(e[0]) + ', Message: ' + e[1]
       return 0
