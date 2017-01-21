@@ -12,7 +12,7 @@ from struct import pack, unpack
 from signal import signal, SIGINT, SIGTERM
 from threading import Thread, activeCount
 from time import sleep
-from sys import exit
+from sys import exit, exc_info
 
 #
 # Configuration
@@ -49,7 +49,7 @@ ATYP_DOMAINNAME = '\x03'
 #
 def Error():
    import sys
-   exc_type, _, exc_tb = sys.exc_info()
+   exc_type, _, exc_tb = exc_info()
    print exc_type, exc_tb.tb_lineno
 
 #
