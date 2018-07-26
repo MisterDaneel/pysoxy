@@ -51,7 +51,7 @@ ATYP_DOMAINNAME = '\x03'
 def Error():
    import sys
    exc_type, _, exc_tb = exc_info()
-   print exc_type, exc_tb.tb_lineno
+   print("{}, {}".format(exc_type, exc_tb.tb_lineno))
 
 #
 # Proxy Loop
@@ -74,9 +74,8 @@ def Proxy_Loop(socket_src, socket_dst):
             else:
                socket_dst.send(data)
       except socket.error, e:
-         print 'Loop failed - Code: ' + str(e[0]) + ', Message: ' + e[1]
+         print("Loop failed - Code: {}, Message: {}".format(str(e[0]), e[1]))
          return
-   # end while
 
 #
 # Make connection to the destination host
@@ -87,7 +86,7 @@ def Connect_To_Dst(dst_addr, dst_port):
       s.connect((dst_addr,dst_port))
       return s
    except socket.error, e:
-      print 'Failed to connect to DST - Code: ' + str(e[0]) + ', Message: ' + e[1]
+      print("Failed to connect to DST - Code: {}, Message: {}".format(str(e[0]), e[1]))
       return 0
    except:
       Error()
@@ -212,7 +211,7 @@ def Create_Socket():
          s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
          s.settimeout(TIMEOUT_SOCKET)
       except socket.error, e:
-         print 'Failed to create socket - Code: ' + str(e[0]) + ', Message: ' + e[1]
+         print("Failed to create socket - Code: {}, Message: {}".format(str(e[0]), e[1]))
          return 0
       return s
 
@@ -226,15 +225,15 @@ def Bind_Port(s):
          s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
          s.bind((LOCAL_ADDR, LOCAL_PORT))
       except socket.error , e:
-         print 'Bind failed in server - Code: ' + str(e[0]) + ', Message: ' + e[1]
+         print("Bind failed in server - Code: {}, Message: {}".format(str(e[0]), e[1]))
          s.close()
          return 0
       # Listen
       try:
-         print "Listen"
+         print("Listen")
          s.listen(10)
       except socket.error, e:
-         print "Listen failed - Code: " + str(e[0]) + ", Message: " + e[1]
+         print("Listen failed - Code: {}, Message: {}".format(str(e[0]), e[1]))
          s.close()
          return 0
       return s
@@ -243,7 +242,6 @@ def Bind_Port(s):
 # Exit
 #
 def Exit_Handler(signal, frame):
-   print 'EXIT'
    global EXIT
    EXIT = True
    exit(0)
@@ -255,7 +253,7 @@ if __name__ == '__main__':
    new_socket = Create_Socket()
    Bind_Port(new_socket)
    if not new_socket:
-      print "Failed to create server"
+      print("Failed to create server")
       exit(0)
    signal(SIGINT, Exit_Handler)
    signal(SIGTERM, Exit_Handler)
@@ -277,5 +275,4 @@ if __name__ == '__main__':
          recv_thread.start()
       else:
          sleep(3)
-      # end while
    new_socket.close()
