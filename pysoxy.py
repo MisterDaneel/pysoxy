@@ -44,6 +44,7 @@ ATYP_IPV4       = '\x01'
 # DOMAINNAME '03'
 ATYP_DOMAINNAME = '\x03'
 
+
 #
 # Error
 #
@@ -56,6 +57,7 @@ def Error():
 # Proxy Loop
 #
 def Proxy_Loop(socket_src, socket_dst):
+   i = 0
    while(not EXIT):
       try:
          reader, _, _ = select.select([socket_src, socket_dst], [], [], 1)
@@ -67,7 +69,7 @@ def Proxy_Loop(socket_src, socket_dst):
          for sock in reader:
             data = sock.recv(BUFSIZE)
             if not data:
-               continue
+               break
             if sock is socket_dst:
                socket_src.send(data)
             else:
