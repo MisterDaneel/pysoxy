@@ -17,11 +17,11 @@ from sys import exit, exc_info
 #
 # Configuration
 #
-MAX_THREADS     = 50
+MAX_THREADS     = 200
 BUFSIZE         = 2048
 TIMEOUT_SOCKET  = 5
 LOCAL_ADDR      = '0.0.0.0'
-LOCAL_PORT      = 5555
+LOCAL_PORT      = 9050
 EXIT            = False
 
 #
@@ -57,7 +57,6 @@ def Error():
 # Proxy Loop
 #
 def Proxy_Loop(socket_src, socket_dst):
-   i = 0
    while(not EXIT):
       try:
          reader, _, _ = select.select([socket_src, socket_dst], [], [], 1)
@@ -69,14 +68,14 @@ def Proxy_Loop(socket_src, socket_dst):
          for sock in reader:
             data = sock.recv(BUFSIZE)
             if not data:
-               break
-            if sock is socket_dst:
+               return
+            elif sock is socket_dst:
                socket_src.send(data)
             else:
                socket_dst.send(data)
       except socket.error, e:
          print 'Loop failed - Code: ' + str(e[0]) + ', Message: ' + e[1]
-         return 0
+         return
    # end while
 
 #
@@ -120,7 +119,6 @@ def Request_Client(wrapper):
          dst_port = unpack('>H', port_to_unpack)[0]
       else:
          return False
-      print 'DST:', dst_addr, dst_port
       return (dst_addr, dst_port)
    except:
       if wrapper != 0:
@@ -262,7 +260,9 @@ if __name__ == '__main__':
    signal(SIGINT, Exit_Handler)
    signal(SIGTERM, Exit_Handler)
    while(not EXIT):
-      if activeCount() < MAX_THREADS:
+      sessions = activeCount() -1
+      print("sessions: {}".format(sessions))
+      if sessions < MAX_THREADS:
          # Accept
          try:
             wrapper, addr = new_socket.accept()
@@ -278,5 +278,4 @@ if __name__ == '__main__':
       else:
          sleep(3)
       # end while
-   wrapper.close()
    new_socket.close()
