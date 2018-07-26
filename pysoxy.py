@@ -45,7 +45,9 @@ ATYP_IPV4 = '\x01'
 ATYP_DOMAINNAME = '\x03'
 
 
-def Error():
+def Error(msg="", e=None):
+    if msg:
+        print("{} - Code: {}, Message: {}".format(msg, str(e[0]), e[1]))
     import sys
     exc_type, _, exc_tb = exc_info()
     print("{}, {}".format(exc_type, exc_tb.tb_lineno))
@@ -69,7 +71,7 @@ def Proxy_Loop(socket_src, socket_dst):
                 else:
                     socket_dst.send(data)
         except socket.error, e:
-            print("Loop failed - Code: {}, Message: {}".format(str(e[0]), e[1]))
+            Error("Loop failed", e)
             return
 
 
@@ -79,7 +81,7 @@ def Connect_To_Dst(dst_addr, dst_port):
         s.connect((dst_addr, dst_port))
         return s
     except socket.error, e:
-        print("Failed to connect to DST - Code: {}, Message: {}".format(str(e[0]), e[1]))
+        Error("Failed to connect to DST", e)
         return 0
     except:
         Error()
@@ -193,7 +195,7 @@ def Create_Socket():
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(TIMEOUT_SOCKET)
     except socket.error, e:
-        print("Failed to create socket - Code: {}, Message: {}".format(str(e[0]), e[1]))
+        Error("Failed to create socket", e)
         return 0
     return s
 
@@ -201,11 +203,11 @@ def Create_Socket():
 def Bind_Port(s):
     # Bind
     try:
-        print 'Bind', str(LOCAL_PORT)
+        print('Bind {}'.format(str(LOCAL_PORT)))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((LOCAL_ADDR, LOCAL_PORT))
     except socket.error, e:
-        print("Bind failed in server - Code: {}, Message: {}".format(str(e[0]), e[1]))
+        Error("Bind failed", e)
         s.close()
         return 0
     # Listen
@@ -213,7 +215,7 @@ def Bind_Port(s):
         print("Listen")
         s.listen(10)
     except socket.error, e:
-        print("Listen failed - Code: {}, Message: {}".format(str(e[0]), e[1]))
+        Error("Listen failed", e)
         s.close()
         return 0
     return s
