@@ -12,7 +12,7 @@ from struct import pack, unpack
 from signal import signal, SIGINT, SIGTERM
 from threading import Thread, activeCount
 from time import sleep
-from sys import exit, exc_info
+from sys import exit, exc_info, stdout
 
 #
 # Configuration
@@ -190,13 +190,18 @@ def Subnegotiation(wrapper):
     return False
 
 
+def Connection(wrapper):
+    if Subnegotiation(wrapper):
+        Request(wrapper)
+
+
 def Create_Socket():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(TIMEOUT_SOCKET)
     except socket.error as e:
         Error("Failed to create socket", e)
-        return 0
+        exit(0)
     return s
 
 
@@ -209,15 +214,14 @@ def Bind_Port(s):
     except socket.error as e:
         Error("Bind failed", e)
         s.close()
-        return 0
+        exit(0)
     # Listen
     try:
-        print("Listen")
         s.listen(10)
     except socket.error as e:
         Error("Listen failed", e)
         s.close()
-        return 0
+        exit(0)
     return s
 
 
@@ -227,31 +231,26 @@ def Exit_Handler(signal, frame):
     exit(0)
 
 
+def Connections_Watcher(count):
+    stdout.write("\rconnections: {}     ".format(count))
+    stdout.flush()
+
+
 if __name__ == '__main__':
     new_socket = Create_Socket()
     Bind_Port(new_socket)
-    if not new_socket:
-        print("Failed to create server")
-        exit(0)
     signal(SIGINT, Exit_Handler)
     signal(SIGTERM, Exit_Handler)
     while(not EXIT):
-        sessions = activeCount() - 1
-        print("sessions: {}".format(sessions))
-        if sessions < MAX_THREADS:
-            # Accept
-            try:
-                wrapper, addr = new_socket.accept()
-                wrapper.setblocking(1)
-            except:
-                continue
-
-            # Thread incoming connection
-            def Connection(wrapper):
-                if Subnegotiation(wrapper):
-                    Request(wrapper)
-            recv_thread = Thread(target=Connection, args=(wrapper, ))
-            recv_thread.start()
-        else:
+        Connections_Watcher(activeCount() - 1)
+        if activeCount() > MAX_THREADS:
             sleep(3)
+            continue
+        try:
+            wrapper, addr = new_socket.accept()
+            wrapper.setblocking(1)
+        except:
+            continue
+        recv_thread = Thread(target=Connection, args=(wrapper, ))
+        recv_thread.start()
     new_socket.close()
