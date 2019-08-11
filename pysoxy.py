@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Small Socks5 Proxy Server in Python (2.7)
+# Small Socks5 Proxy Server in Python
 # from https://github.com/MisterDaneel/
 #
 
