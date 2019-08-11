@@ -9,10 +9,10 @@ import socket
 import select
 from struct import pack, unpack
 # System
-from signal import signal, SIGINT, SIGTERM
+import traceback
 from threading import Thread, activeCount
+from signal import signal, SIGINT, SIGTERM
 from time import sleep
-from sys import exit, exc_info, stdout
 
 #
 # Configuration
@@ -29,28 +29,28 @@ EXIT = False
 #
 '''Version of the protocol'''
 # PROTOCOL VERSION 5
-VER = '\x05'
+VER = b'\x05'
 '''Method constants'''
 # '00' NO AUTHENTICATION REQUIRED
-M_NOAUTH = '\x00'
+M_NOAUTH = b'\x00'
 # 'FF' NO ACCEPTABLE METHODS
-M_NOTAVAILABLE = '\xff'
+M_NOTAVAILABLE = b'\xff'
 '''Command constants'''
 # CONNECT '01'
-CMD_CONNECT = '\x01'
+CMD_CONNECT = b'\x01'
 '''Address type constants'''
 # IP V4 address '01'
-ATYP_IPV4 = '\x01'
+ATYP_IPV4 = b'\x01'
 # DOMAINNAME '03'
-ATYP_DOMAINNAME = '\x03'
+ATYP_DOMAINNAME = b'\x03'
 
 
 def Error(msg="", e=None):
     if msg:
+        traceback.print_exc()
         print("{} - Code: {}, Message: {}".format(msg, str(e[0]), e[1]))
     else:
-        exc_type, _, exc_tb = exc_info()
-        print("{}, {}".format(exc_type, exc_tb.tb_lineno))
+        traceback.print_exc()
 
 
 def Proxy_Loop(socket_src, socket_dst):
@@ -58,6 +58,7 @@ def Proxy_Loop(socket_src, socket_dst):
         try:
             reader, _, _ = select.select([socket_src, socket_dst], [], [], 1)
         except select.error:
+            Error("Select failed", e)
             return
         if not reader:
             return
@@ -96,22 +97,25 @@ def Request_Client(wrapper):
         # +----+-----+-------+------+----------+----------+
         s5_request = wrapper.recv(BUFSIZE)
         # Check VER, CMD and RSV
-        if (s5_request[0] != VER or
-                s5_request[1] != CMD_CONNECT or
-                s5_request[2] != '\x00'):
+        if (
+            s5_request[0:1] != VER or
+            s5_request[1:2] != CMD_CONNECT or
+            s5_request[2:3] != b'\x00'
+        ):
             return False
         # IPV4
-        if s5_request[3] == ATYP_IPV4:
+        if s5_request[3:4] == ATYP_IPV4:
             dst_addr = socket.inet_ntoa(s5_request[4:-2])
             dst_port = unpack('>H', s5_request[8:len(s5_request)])[0]
         # DOMAIN NAME
-        elif s5_request[3] == ATYP_DOMAINNAME:
-            sz_domain_name = ord(s5_request[4])
+        elif s5_request[3:4] == ATYP_DOMAINNAME:
+            sz_domain_name = s5_request[4]
             dst_addr = s5_request[5: 5 + sz_domain_name - len(s5_request)]
             port_to_unpack = s5_request[5 + sz_domain_name:len(s5_request)]
             dst_port = unpack('>H', port_to_unpack)[0]
         else:
             return False
+        print(dst_addr, dst_port)
         return (dst_addr, dst_port)
     except:
         if wrapper != 0:
@@ -122,26 +126,31 @@ def Request_Client(wrapper):
 
 def Request(wrapper):
     dst = Request_Client(wrapper)
+
     try:
         # Server Reply
         # +----+-----+-------+------+----------+----------+
         # |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
         # +----+-----+-------+------+----------+----------+
-        REP = '\x07'
-        BND = '\x00' + '\x00' + '\x00' + '\x00' + '\x00' + '\x00'
+        REP = b'\x07'
+        BND = b'\x00' + b'\x00' + b'\x00' + b'\x00' + b'\x00' + b'\x00'
         if dst:
             socket_dst = Connect_To_Dst(dst[0], dst[1])
         if not dst or socket_dst == 0:
-            REP = '\x01'
+            REP = b'\x01'
         else:
-            REP = '\x00'
+            REP = b'\x00'
             BND = socket.inet_aton(socket_dst.getsockname()[0])
             BND += pack(">H", socket_dst.getsockname()[1])
-        reply = VER + REP + '\x00' + ATYP_IPV4 + BND
-        wrapper.sendall(reply)
-
+        reply = VER + REP + b'\x00' + ATYP_IPV4 + BND
+        try:
+            wrapper.sendall(reply)
+        except:
+            if wrapper != 0:
+                wrapper.close()
+            return False
         # start proxy
-        if REP == '\x00':
+        if REP == b'\x00':
             Proxy_Loop(wrapper, socket_dst)
         if wrapper != 0:
             wrapper.close()
@@ -161,15 +170,15 @@ def Subnegotiation_Client(wrapper):
     # +----+----------+----------+
     identification_packet = wrapper.recv(BUFSIZE)
     # VER field
-    if (VER != identification_packet[0]):
+    if (VER != identification_packet[0:1]):
         return M_NOTAVAILABLE
     # METHODS fields
-    NMETHODS = ord(identification_packet[1])
+    NMETHODS = identification_packet[1]
     METHODS = identification_packet[2:]
     if (len(METHODS) != NMETHODS):
         return M_NOTAVAILABLE
     for METHOD in METHODS:
-        if(METHOD == M_NOAUTH):
+        if(METHOD == ord(M_NOAUTH)):
             return M_NOAUTH
     return M_NOTAVAILABLE
 
@@ -228,12 +237,6 @@ def Bind_Port(s):
 def Exit_Handler(signal, frame):
     global EXIT
     EXIT = True
-    exit(0)
-
-
-def Connections_Watcher(count):
-    stdout.write("\rconnections: {}     ".format(count))
-    stdout.flush()
 
 
 if __name__ == '__main__':
@@ -242,7 +245,6 @@ if __name__ == '__main__':
     signal(SIGINT, Exit_Handler)
     signal(SIGTERM, Exit_Handler)
     while(not EXIT):
-        Connections_Watcher(activeCount() - 1)
         if activeCount() > MAX_THREADS:
             sleep(3)
             continue
