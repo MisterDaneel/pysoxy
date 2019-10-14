@@ -57,7 +57,7 @@ def Proxy_Loop(socket_src, socket_dst):
     while(not EXIT):
         try:
             reader, _, _ = select.select([socket_src, socket_dst], [], [], 1)
-        except select.error:
+        except select.error as e:
             Error("Select failed", e)
             return
         if not reader:
