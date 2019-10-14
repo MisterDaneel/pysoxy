@@ -61,7 +61,7 @@ def Proxy_Loop(socket_src, socket_dst):
             Error("Select failed", e)
             return
         if not reader:
-            return
+            continue
         try:
             for sock in reader:
                 data = sock.recv(BUFSIZE)
