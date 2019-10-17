@@ -23,6 +23,12 @@ BUFSIZE = 2048
 TIMEOUT_SOCKET = 5
 LOCAL_ADDR = '0.0.0.0'
 LOCAL_PORT = 9050
+# Parameter to bind a socket to a device, using SO_BINDTODEVICE
+# Only root can set this option
+# If the name is an empty string or None, the interface is chosen when
+# a routing decision is made
+# OUTGOING_INTERFACE = "eth0"
+OUTGOING_INTERFACE = ""
 
 #
 # Constants
@@ -95,6 +101,16 @@ def proxy_loop(socket_src, socket_dst):
 def connect_to_dst(dst_addr, dst_port):
     """ Connect to desired destination """
     sock = create_socket()
+    if OUTGOING_INTERFACE:
+        try:
+            sock.setsockopt(
+                socket.SOL_SOCKET,
+                socket.SO_BINDTODEVICE,
+                OUTGOING_INTERFACE.encode(),
+            )
+        except PermissionError as err:
+            print("Only root can set OUTGOING_INTERFACE parameter")
+            EXIT.set_status(True)
     try:
         sock.connect((dst_addr, dst_port))
         return sock
