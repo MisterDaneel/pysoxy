@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-#
-# Small Socks5 Proxy Server in Python
-# from https://github.com/MisterDaneel/
-#
+"""
+ Small Socks5 Proxy Server in Python
+ from https://github.com/MisterDaneel/
+"""
 
 # Network
 import socket
@@ -13,6 +13,7 @@ import traceback
 from threading import Thread, activeCount
 from signal import signal, SIGINT, SIGTERM
 from time import sleep
+import sys
 
 #
 # Configuration
@@ -45,20 +46,22 @@ ATYP_IPV4 = b'\x01'
 ATYP_DOMAINNAME = b'\x03'
 
 
-def Error(msg="", e=None):
+def error(msg="", err=None):
+    """ Print exception stack trace python """
     if msg:
         traceback.print_exc()
-        print("{} - Code: {}, Message: {}".format(msg, str(e[0]), e[1]))
+        print("{} - Code: {}, Message: {}".format(msg, str(err[0]), err[1]))
     else:
         traceback.print_exc()
 
 
-def Proxy_Loop(socket_src, socket_dst):
-    while(not EXIT):
+def proxy_loop(socket_src, socket_dst):
+    """ Wait for network activity """
+    while not EXIT:
         try:
             reader, _, _ = select.select([socket_src, socket_dst], [], [], 1)
-        except select.error as e:
-            Error("Select failed", e)
+        except select.error as err:
+            error("Select failed", err)
             return
         if not reader:
             continue
@@ -67,29 +70,28 @@ def Proxy_Loop(socket_src, socket_dst):
                 data = sock.recv(BUFSIZE)
                 if not data:
                     return
-                elif sock is socket_dst:
+                if sock is socket_dst:
                     socket_src.send(data)
                 else:
                     socket_dst.send(data)
-        except socket.error as e:
-            Error("Loop failed", e)
+        except socket.error as err:
+            error("Loop failed", err)
             return
 
 
-def Connect_To_Dst(dst_addr, dst_port):
+def connect_to_dst(dst_addr, dst_port):
+    """ Connect to desired destination """
+    sock = create_socket()
     try:
-        s = Create_Socket()
-        s.connect((dst_addr, dst_port))
-        return s
-    except socket.error as e:
-        Error("Failed to connect to DST", e)
-        return 0
-    except:
-        Error()
+        sock.connect((dst_addr, dst_port))
+        return sock
+    except socket.error as err:
+        error("Failed to connect to DST", err)
         return 0
 
 
-def Request_Client(wrapper):
+def request_client(wrapper):
+    """ Client request details """
     try:
         # Client Request
         # +----+-----+-------+------+----------+----------+
@@ -98,9 +100,9 @@ def Request_Client(wrapper):
         s5_request = wrapper.recv(BUFSIZE)
         # Check VER, CMD and RSV
         if (
-            s5_request[0:1] != VER or
-            s5_request[1:2] != CMD_CONNECT or
-            s5_request[2:3] != b'\x00'
+                s5_request[0:1] != VER or
+                s5_request[1:2] != CMD_CONNECT or
+                s5_request[2:3] != b'\x00'
         ):
             return False
         # IPV4
@@ -117,142 +119,163 @@ def Request_Client(wrapper):
             return False
         print(dst_addr, dst_port)
         return (dst_addr, dst_port)
-    except:
+    except ConnectionResetError:
         if wrapper != 0:
             wrapper.close()
-        Error()
+        error()
     return False
 
 
-def Request(wrapper):
-    dst = Request_Client(wrapper)
-
+def request(wrapper):
+    """
+        The SOCKS request information is sent by the client as soon as it has
+        established a connection to the SOCKS server, and completed the
+        authentication negotiations.  The server evaluates the request, and
+        returns a reply
+    """
+    dst = request_client(wrapper)
+    # Server Reply
+    # +----+-----+-------+------+----------+----------+
+    # |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+    # +----+-----+-------+------+----------+----------+
+    rep = b'\x07'
+    bnd = b'\x00' + b'\x00' + b'\x00' + b'\x00' + b'\x00' + b'\x00'
+    if dst:
+        socket_dst = connect_to_dst(dst[0], dst[1])
+    if not dst or socket_dst == 0:
+        rep = b'\x01'
+    else:
+        rep = b'\x00'
+        bnd = socket.inet_aton(socket_dst.getsockname()[0])
+        bnd += pack(">H", socket_dst.getsockname()[1])
+    reply = VER + rep + b'\x00' + ATYP_IPV4 + bnd
     try:
-        # Server Reply
-        # +----+-----+-------+------+----------+----------+
-        # |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
-        # +----+-----+-------+------+----------+----------+
-        REP = b'\x07'
-        BND = b'\x00' + b'\x00' + b'\x00' + b'\x00' + b'\x00' + b'\x00'
-        if dst:
-            socket_dst = Connect_To_Dst(dst[0], dst[1])
-        if not dst or socket_dst == 0:
-            REP = b'\x01'
-        else:
-            REP = b'\x00'
-            BND = socket.inet_aton(socket_dst.getsockname()[0])
-            BND += pack(">H", socket_dst.getsockname()[1])
-        reply = VER + REP + b'\x00' + ATYP_IPV4 + BND
-        try:
-            wrapper.sendall(reply)
-        except:
-            if wrapper != 0:
-                wrapper.close()
-            return False
-        # start proxy
-        if REP == b'\x00':
-            Proxy_Loop(wrapper, socket_dst)
+        wrapper.sendall(reply)
+    except socket.error:
         if wrapper != 0:
             wrapper.close()
-        if socket_dst != 0:
-            socket_dst.close()
-    except:
-        if wrapper != 0:
-            wrapper.close()
-        Error()
-        return False
+        return
+    # start proxy
+    if rep == b'\x00':
+        proxy_loop(wrapper, socket_dst)
+    if wrapper != 0:
+        wrapper.close()
+    if socket_dst != 0:
+        socket_dst.close()
 
 
-def Subnegotiation_Client(wrapper):
+def subnegotiation_client(wrapper):
+    """
+        The client connects to the server, and sends a version
+        identifier/method selection message
+    """
     # Client Version identifier/method selection message
     # +----+----------+----------+
     # |VER | NMETHODS | METHODS  |
     # +----+----------+----------+
-    identification_packet = wrapper.recv(BUFSIZE)
+    try:
+        identification_packet = wrapper.recv(BUFSIZE)
+    except socket.error:
+        error()
+        return M_NOTAVAILABLE
     # VER field
-    if (VER != identification_packet[0:1]):
+    if VER != identification_packet[0:1]:
         return M_NOTAVAILABLE
     # METHODS fields
-    NMETHODS = identification_packet[1]
-    METHODS = identification_packet[2:]
-    if (len(METHODS) != NMETHODS):
+    nmethods = identification_packet[1]
+    methods = identification_packet[2:]
+    if len(methods) != nmethods:
         return M_NOTAVAILABLE
-    for METHOD in METHODS:
-        if(METHOD == ord(M_NOAUTH)):
+    for method in methods:
+        if method == ord(M_NOAUTH):
             return M_NOAUTH
     return M_NOTAVAILABLE
 
 
-def Subnegotiation(wrapper):
+def subnegotiation(wrapper):
+    """
+        The client connects to the server, and sends a version
+        identifier/method selection message
+        The server selects from one of the methods given in METHODS, and
+        sends a METHOD selection message
+    """
+    method = subnegotiation_client(wrapper)
+    # Server Method selection message
+    # +----+--------+
+    # |VER | METHOD |
+    # +----+--------+
+    if method == M_NOAUTH:
+        return False
+    reply = VER + method
     try:
-        METHOD = Subnegotiation_Client(wrapper)
-        # Server Method selection message
-        # +----+--------+
-        # |VER | METHOD |
-        # +----+--------+
-        reply = VER + METHOD
         wrapper.sendall(reply)
-        if METHOD == M_NOAUTH:
-            return True
-    except:
-        Error()
-    return False
+    except socket.error:
+        error()
+        return False
+    return True
 
 
-def Connection(wrapper):
-    if Subnegotiation(wrapper):
-        Request(wrapper)
+def connection(wrapper):
+    """  function run by a thread """
+    if subnegotiation(wrapper):
+        request(wrapper)
 
 
-def Create_Socket():
+def create_socket():
+    """ create an INET, STREAMing socket """
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(TIMEOUT_SOCKET)
-    except socket.error as e:
-        Error("Failed to create socket", e)
-        exit(0)
-    return s
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(TIMEOUT_SOCKET)
+    except socket.error as err:
+        error("Failed to create socket", err)
+        sys.exit(0)
+    return sock
 
 
-def Bind_Port(s):
-    # Bind
+def bind_port(sock):
+    """ Bind the socket to address and listen for connections made to the socket"""
     try:
         print('Bind {}'.format(str(LOCAL_PORT)))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((LOCAL_ADDR, LOCAL_PORT))
-    except socket.error as e:
-        Error("Bind failed", e)
-        s.close()
-        exit(0)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((LOCAL_ADDR, LOCAL_PORT))
+    except socket.error as err:
+        error("Bind failed", err)
+        sock.close()
+        sys.exit(0)
     # Listen
     try:
-        s.listen(10)
-    except socket.error as e:
-        Error("Listen failed", e)
-        s.close()
-        exit(0)
-    return s
+        sock.listen(10)
+    except socket.error as err:
+        error("Listen failed", err)
+        sock.close()
+        sys.exit(0)
+    return sock
 
 
-def Exit_Handler(signal, frame):
+def exit_handler():
+    """ Exit script """
     global EXIT
     EXIT = True
 
 
-if __name__ == '__main__':
-    new_socket = Create_Socket()
-    Bind_Port(new_socket)
-    signal(SIGINT, Exit_Handler)
-    signal(SIGTERM, Exit_Handler)
-    while(not EXIT):
+def main():
+    """ Main function """
+    new_socket = create_socket()
+    bind_port(new_socket)
+    signal(SIGINT, exit_handler)
+    signal(SIGTERM, exit_handler)
+    while not EXIT:
         if activeCount() > MAX_THREADS:
             sleep(3)
             continue
         try:
-            wrapper, addr = new_socket.accept()
+            wrapper, _ = new_socket.accept()
             wrapper.setblocking(1)
-        except:
+        except socket.error:
             continue
-        recv_thread = Thread(target=Connection, args=(wrapper, ))
+        recv_thread = Thread(target=connection, args=(wrapper, ))
         recv_thread.start()
     new_socket.close()
+
+if __name__ == '__main__':
+    main()
