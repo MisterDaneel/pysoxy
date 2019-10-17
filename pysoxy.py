@@ -45,6 +45,7 @@ ATYP_DOMAINNAME = b'\x03'
 
 
 class LoggerMixin:
+    """Contains a logger method for use by other classes."""
 
     def __init__(self):
         logger_basename = '''pysoxy'''
@@ -52,8 +53,9 @@ class LoggerMixin:
 
 
 class ExitStatus:
-    """Manage exit status."""
+    """Manages exit status."""
     def __init__(self):
+        """Initializes an ExitStatus object."""
         self.exit = False
 
     def set_status(self, status):
@@ -66,11 +68,12 @@ class ExitStatus:
 
 
 class Request(LoggerMixin):
-    """________________."""
+    """_____<here needs to come a one/multi line summary>_____."""
 
     def __init__(self,
                  wrapper,
                  local_addr_e):
+        """Initializes an Request object."""
         super().__init__()
         self.wrapper = wrapper
         self.local_addr_e = local_addr_e
@@ -78,7 +81,7 @@ class Request(LoggerMixin):
         self.socket_dst = None
 
     def proxy_loop(self):
-        """____<@Daneel, what does this method do?>___"""
+        """______<here needs to come a one/multi line summary>______"""
         while not EXIT.get_status():
             try:
                 reader, _, _ = select.select([self.wrapper, self.socket_dst], [], [], 1)
@@ -173,9 +176,10 @@ class Request(LoggerMixin):
 
 
 class Subnegotiation(LoggerMixin):
-    """Performs handshake on version (or something)."""
+    """_____<here needs to come a one/multi line summary>_____."""
 
     def __init__(self, wrapper):
+        """Initializes a Subnegotiation object."""
         super().__init__()
         self.wrapper = wrapper
 
@@ -236,6 +240,7 @@ class SocketServerExternal(LoggerMixin):
                  dst_addr,
                  dst_port,
                  local_addr_e):
+        """Initializes a SocketServerExternal object."""
         super().__init__()
         self.dst_addr = dst_addr
         self.dst_port = dst_port
@@ -264,7 +269,6 @@ class SocketServerExternal(LoggerMixin):
             return 0
 
     def _create_socket(self):
-        """ Creates an INET, STREAMing socket."""
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.settimeout(TIMEOUT_SOCKET)
@@ -280,12 +284,14 @@ class SocketServerInternal(LoggerMixin):
     def __init__(self,
                  local_addr,
                  local_port):
+        """Initializes a SocketServerInternal object."""
         super().__init__()
         self.sock = None
         self.local_addr = local_addr
         self.local_port = local_port
 
     def create_socket_and_listen(self):
+        """Creates a socket, binds it, and listens for incoming connections."""
         self._create_socket()
         self._bind()
         self._listen()
@@ -327,8 +333,10 @@ def connection(wrapper, local_addr_e):
 
 
 class Proxy(LoggerMixin):
+    """Models a SOCKS proxy server."""
 
     def __init__(self, local_addr_i, local_port, local_addr_e=None):
+        """Initializes a Proxy object."""
         super().__init__()
         self.local_addr_i = local_addr_i
         self.local_port = local_port
@@ -338,12 +346,14 @@ class Proxy(LoggerMixin):
         self.terminate = False
 
     def start(self):
+        """Starts the SOCKS proxy server."""
         self.new_socket = SocketServerInternal(self.local_addr_i, self.local_port)
         self.new_socket.create_socket_and_listen()
         self.thread = threading.Thread(target=self._execution)
         self.thread.start()
 
     def stop(self):
+        """Stops the SOCKS proxy server."""
         EXIT.set_status(True)
 
     def _execution(self):
