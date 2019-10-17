@@ -23,7 +23,6 @@ BUFSIZE = 2048
 TIMEOUT_SOCKET = 5
 LOCAL_ADDR = '0.0.0.0'
 LOCAL_PORT = 9050
-EXIT = False
 
 #
 # Constants
@@ -46,6 +45,20 @@ ATYP_IPV4 = b'\x01'
 ATYP_DOMAINNAME = b'\x03'
 
 
+class ExitStatus:
+    """ Manage exit status """
+    def __init__(self):
+        self.exit = False
+
+    def set_status(self, status):
+        """ set exist status """
+        self.exit = status
+
+    def get_status(self):
+        """ get exit status """
+        return self.exit
+
+
 def error(msg="", err=None):
     """ Print exception stack trace python """
     if msg:
@@ -57,7 +70,7 @@ def error(msg="", err=None):
 
 def proxy_loop(socket_src, socket_dst):
     """ Wait for network activity """
-    while not EXIT:
+    while not EXIT.get_status():
         try:
             reader, _, _ = select.select([socket_src, socket_dst], [], [], 1)
         except select.error as err:
@@ -92,38 +105,37 @@ def connect_to_dst(dst_addr, dst_port):
 
 def request_client(wrapper):
     """ Client request details """
+    # +----+-----+-------+------+----------+----------+
+    # |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+    # +----+-----+-------+------+----------+----------+
     try:
-        # Client Request
-        # +----+-----+-------+------+----------+----------+
-        # |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
-        # +----+-----+-------+------+----------+----------+
         s5_request = wrapper.recv(BUFSIZE)
-        # Check VER, CMD and RSV
-        if (
-                s5_request[0:1] != VER or
-                s5_request[1:2] != CMD_CONNECT or
-                s5_request[2:3] != b'\x00'
-        ):
-            return False
-        # IPV4
-        if s5_request[3:4] == ATYP_IPV4:
-            dst_addr = socket.inet_ntoa(s5_request[4:-2])
-            dst_port = unpack('>H', s5_request[8:len(s5_request)])[0]
-        # DOMAIN NAME
-        elif s5_request[3:4] == ATYP_DOMAINNAME:
-            sz_domain_name = s5_request[4]
-            dst_addr = s5_request[5: 5 + sz_domain_name - len(s5_request)]
-            port_to_unpack = s5_request[5 + sz_domain_name:len(s5_request)]
-            dst_port = unpack('>H', port_to_unpack)[0]
-        else:
-            return False
-        print(dst_addr, dst_port)
-        return (dst_addr, dst_port)
     except ConnectionResetError:
         if wrapper != 0:
             wrapper.close()
         error()
-    return False
+        return False
+    # Check VER, CMD and RSV
+    if (
+            s5_request[0:1] != VER or
+            s5_request[1:2] != CMD_CONNECT or
+            s5_request[2:3] != b'\x00'
+    ):
+        return False
+    # IPV4
+    if s5_request[3:4] == ATYP_IPV4:
+        dst_addr = socket.inet_ntoa(s5_request[4:-2])
+        dst_port = unpack('>H', s5_request[8:len(s5_request)])[0]
+    # DOMAIN NAME
+    elif s5_request[3:4] == ATYP_DOMAINNAME:
+        sz_domain_name = s5_request[4]
+        dst_addr = s5_request[5: 5 + sz_domain_name - len(s5_request)]
+        port_to_unpack = s5_request[5 + sz_domain_name:len(s5_request)]
+        dst_port = unpack('>H', port_to_unpack)[0]
+    else:
+        return False
+    print(dst_addr, dst_port)
+    return (dst_addr, dst_port)
 
 
 def request(wrapper):
@@ -204,7 +216,7 @@ def subnegotiation(wrapper):
     # +----+--------+
     # |VER | METHOD |
     # +----+--------+
-    if method == M_NOAUTH:
+    if method != M_NOAUTH:
         return False
     reply = VER + method
     try:
@@ -216,13 +228,13 @@ def subnegotiation(wrapper):
 
 
 def connection(wrapper):
-    """  function run by a thread """
+    """ Function run by a thread """
     if subnegotiation(wrapper):
         request(wrapper)
 
 
 def create_socket():
-    """ create an INET, STREAMing socket """
+    """ Create an INET, STREAMing socket """
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(TIMEOUT_SOCKET)
@@ -233,7 +245,10 @@ def create_socket():
 
 
 def bind_port(sock):
-    """ Bind the socket to address and listen for connections made to the socket"""
+    """
+        Bind the socket to address and
+        listen for connections made to the socket
+    """
     try:
         print('Bind {}'.format(str(LOCAL_PORT)))
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -252,10 +267,10 @@ def bind_port(sock):
     return sock
 
 
-def exit_handler():
-    """ Exit script """
-    global EXIT
-    EXIT = True
+def exit_handler(signum, frame):
+    """ Signal handler called with signal, exit script """
+    print('Signal handler called with signal', signum)
+    EXIT.set_status(True)
 
 
 def main():
@@ -264,18 +279,26 @@ def main():
     bind_port(new_socket)
     signal(SIGINT, exit_handler)
     signal(SIGTERM, exit_handler)
-    while not EXIT:
+    while not EXIT.get_status():
         if activeCount() > MAX_THREADS:
             sleep(3)
             continue
         try:
             wrapper, _ = new_socket.accept()
             wrapper.setblocking(1)
-        except socket.error:
+        except socket.timeout:
             continue
+        except socket.error:
+            error()
+            continue
+        except TypeError:
+            error()
+            sys.exit(0)
         recv_thread = Thread(target=connection, args=(wrapper, ))
         recv_thread.start()
     new_socket.close()
 
+
+EXIT = ExitStatus()
 if __name__ == '__main__':
     main()
