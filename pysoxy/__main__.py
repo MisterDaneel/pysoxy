@@ -1,2 +1,2 @@
-from . import pysoxy
-pysoxy.main()
+from .pysoxy import main
+main()
