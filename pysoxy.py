@@ -14,6 +14,7 @@ from threading import Thread, activeCount
 from signal import signal, SIGINT, SIGTERM
 from time import sleep
 import sys
+import logging
 
 #
 # Configuration
@@ -50,6 +51,15 @@ ATYP_IPV4 = b'\x01'
 # DOMAINNAME '03'
 ATYP_DOMAINNAME = b'\x03'
 
+#
+# Global
+#
+py_logger = None
+
+def log(*msgs):
+    global py_logger
+    for msg in msgs:
+        py_logger.info(msg)
 
 class ExitStatus:
     """ Manage exit status """
@@ -67,11 +77,12 @@ class ExitStatus:
 
 def error(msg="", err=None):
     """ Print exception stack trace python """
+    global py_logger
     if msg:
-        traceback.print_exc()
-        print("{} - Code: {}, Message: {}".format(msg, str(err[0]), err[1]))
+        py_logger.exception(traceback.format_exc())
+        py_logger.info("{} - Code: {}, Message: {}".format(msg, str(err[0]), err[1]))
     else:
-        traceback.print_exc()
+        py_logger.exception(traceback.format_exc())
 
 
 def proxy_loop(socket_src, socket_dst):
@@ -109,7 +120,7 @@ def connect_to_dst(dst_addr, dst_port):
                 OUTGOING_INTERFACE.encode(),
             )
         except PermissionError as err:
-            print("Only root can set OUTGOING_INTERFACE parameter")
+            log("Only root can set OUTGOING_INTERFACE parameter")
             EXIT.set_status(True)
     try:
         sock.connect((dst_addr, dst_port))
@@ -150,7 +161,7 @@ def request_client(wrapper):
         dst_port = unpack('>H', port_to_unpack)[0]
     else:
         return False
-    print(dst_addr, dst_port)
+    log(dst_addr, dst_port)
     return (dst_addr, dst_port)
 
 
@@ -168,6 +179,7 @@ def request(wrapper):
     # +----+-----+-------+------+----------+----------+
     rep = b'\x07'
     bnd = b'\x00' + b'\x00' + b'\x00' + b'\x00' + b'\x00' + b'\x00'
+    socket_dst = 0
     if dst:
         socket_dst = connect_to_dst(dst[0], dst[1])
     if not dst or socket_dst == 0:
@@ -266,7 +278,7 @@ def bind_port(sock):
         listen for connections made to the socket
     """
     try:
-        print('Bind {}'.format(str(LOCAL_PORT)))
+        log('Bind {}'.format(str(LOCAL_PORT)))
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((LOCAL_ADDR, LOCAL_PORT))
     except socket.error as err:
@@ -285,11 +297,21 @@ def bind_port(sock):
 
 def exit_handler(signum, frame):
     """ Signal handler called with signal, exit script """
-    print('Signal handler called with signal', signum)
+    log('Signal handler called with signal', signum)
     EXIT.set_status(True)
 
 
 def main():
+    
+    #logger
+    global py_logger
+    py_logger = logging.getLogger(__name__)
+    py_logger.setLevel(logging.INFO)
+    py_handler = logging.FileHandler(f"{__name__}.log", mode='w')
+    py_formatter = logging.Formatter("%(name)s %(asctime)s %(levelname)s %(message)s")
+    py_handler.setFormatter(py_formatter)
+    py_logger.addHandler(py_handler)
+    
     """ Main function """
     new_socket = create_socket()
     bind_port(new_socket)
